@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -98,14 +99,15 @@ func main() {
 }
 
 func getStopTimes() ([]StopTime, map[string][]int) {
-	f, err := os.Open("../MBTA_GTFS/stop_times.txt")
+	fname := "../MBTA_GTFS/stop_times.txt"
+	f, err := os.OpenFile(fname, os.O_RDONLY, 0644)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 
 	start := time.Now()
-	r := csv.NewReader(f)
+	r := csv.NewReader(bufio.NewReaderSize(f, 1024*1024*8))
 	records, err := r.ReadAll()
 	if err != nil {
 		panic(err)
@@ -140,14 +142,15 @@ func getStopTimes() ([]StopTime, map[string][]int) {
 }
 
 func getTrips() ([]Trip, map[string][]int) {
-	f, err := os.Open("../MBTA_GTFS/trips.txt")
+	fname := "../MBTA_GTFS/trips.txt"
+	f, err := os.OpenFile(fname, os.O_RDONLY, 0644)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 
 	start := time.Now()
-	r := csv.NewReader(f)
+	r := csv.NewReader(bufio.NewReaderSize(f, 1024*1024*8))
 	records, err := r.ReadAll()
 	if err != nil {
 		panic(err)
