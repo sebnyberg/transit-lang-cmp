@@ -21,7 +21,6 @@ type StopTime struct {
 
 type Trip struct {
 	TripID    string
-	RouteID   string
 	ServiceID string
 }
 
@@ -42,21 +41,14 @@ func buildTripResponse(
 	route string,
 	stopTimes []StopTime,
 	stopTimesIxByTrip map[string][]int,
-	trips []Trip,
-	tripsIxByRoute map[string][]int,
+	trips map[string][]*Trip,
 ) []TripResponse {
-	tripIxs, ok := tripsIxByRoute[route]
-	if !ok {
-		return []TripResponse{}
-	}
-
-	resp := make([]TripResponse, 0, len(tripIxs))
-	for tripIx := range tripIxs {
-		trip := trips[tripIx]
+	resp := make([]TripResponse, 0, len(trips[route]))
+	for _, trip := range trips[route] {
 		tripResponse := TripResponse{
 			TripID:    trip.TripID,
 			ServiceID: trip.ServiceID,
-			RouteID:   trip.RouteID,
+			RouteID:   route,
 		}
 
 		stopTimeIxs, ok := stopTimesIxByTrip[trip.TripID]
@@ -80,11 +72,11 @@ func buildTripResponse(
 
 func main() {
 	stopTimes, stopTimesIxByTrip := getStopTimes()
-	trips, tripsIxByRoute := getTrips()
+	tripsByRoute := getTrips()
 
 	http.HandleFunc("/schedules/", func(w http.ResponseWriter, r *http.Request) {
 		route := strings.Split(r.URL.Path, "/")[2]
-		resp := buildTripResponse(route, stopTimes, stopTimesIxByTrip, trips, tripsIxByRoute)
+		resp := buildTripResponse(route, stopTimes, stopTimesIxByTrip, tripsByRoute)
 		w.Header().Set("Content-Type", "application/json")
 		json_resp, err := json.Marshal(resp)
 		if err != nil {
@@ -141,7 +133,7 @@ func getStopTimes() ([]StopTime, map[string][]int) {
 	return stopTimes, stsByTrip
 }
 
-func getTrips() ([]Trip, map[string][]int) {
+func getTrips() map[string][]*Trip {
 	fname := "../MBTA_GTFS/trips.txt"
 	f, err := os.OpenFile(fname, os.O_RDONLY, 0644)
 	if err != nil {
@@ -164,22 +156,19 @@ func getTrips() ([]Trip, map[string][]int) {
 		panic(1)
 	}
 
-	trips := make([]Trip, 0, 70_000)
-	tripsByRoute := make(map[string][]int)
-	for i, rec := range records[1:] {
+	trips := make(map[string][]*Trip)
+	for _, rec := range records[1:] {
 		route := rec[0]
-		ts, ok := tripsByRoute[route]
-		if ok {
-			tripsByRoute[route] = append(ts, i)
-		} else {
-			tripsByRoute[route] = []int{i}
+		t := &Trip{
+			TripID:    rec[2],
+			ServiceID: rec[1],
 		}
-		trips = append(trips, Trip{TripID: rec[2], RouteID: route, ServiceID: rec[1]})
+		trips[route] = append(trips[route], t)
 	}
 	end := time.Now()
 	elapsed := end.Sub(start)
 
-	fmt.Println("parsed", len(trips), "trips in", elapsed)
+	fmt.Println("parsed", len(records)-1, "trips in", elapsed)
 
-	return trips, tripsByRoute
+	return trips
 }
