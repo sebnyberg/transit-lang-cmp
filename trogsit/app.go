@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -54,22 +55,30 @@ func getStopTimes() map[string][]StopTime {
 	defer f.Close()
 
 	start := time.Now()
-	r := csv.NewReader(bufio.NewReaderSize(f, 1024*1024*8))
-	records, err := r.ReadAll()
+	r := csv.NewReader(bufio.NewReader(f))
+	head, err := r.Read()
 	if err != nil {
 		panic(err)
 	}
 
-	if records[0][0] != "trip_id" || records[0][3] != "stop_id" || records[0][1] != "arrival_time" || records[0][2] != "departure_time" {
+	if head[0] != "trip_id" || head[3] != "stop_id" || head[1] != "arrival_time" || head[2] != "departure_time" {
 		fmt.Println("stop_times.txt not in expected format:")
-		for i, cell := range records[0] {
+		for i, cell := range head {
 			fmt.Println(i, cell)
 		}
 		panic(1)
 	}
 
 	stopTimes := make(map[string][]StopTime)
-	for _, rec := range records[1:] {
+	var n int
+	for {
+		rec, err := r.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
 		trip := rec[0]
 		st := StopTime{
 			StopID:    rec[3],
@@ -77,11 +86,12 @@ func getStopTimes() map[string][]StopTime {
 			Departure: rec[2],
 		}
 		stopTimes[trip] = append(stopTimes[trip], st)
+		n++
 	}
 	end := time.Now()
 	elapsed := end.Sub(start)
 
-	fmt.Println("parsed", len(records)-1, "stop times in", elapsed)
+	fmt.Println("parsed", n, "stop times in", elapsed)
 	return stopTimes
 }
 
@@ -94,22 +104,30 @@ func getTrips(stopTimes map[string][]StopTime) map[string][]Trip {
 	defer f.Close()
 
 	start := time.Now()
-	r := csv.NewReader(bufio.NewReaderSize(f, 1024*1024*8))
-	records, err := r.ReadAll()
+	r := csv.NewReader(bufio.NewReader(f))
+	head, err := r.Read()
 	if err != nil {
 		panic(err)
 	}
 
-	if records[0][2] != "trip_id" || records[0][0] != "route_id" || records[0][1] != "service_id" {
+	if head[2] != "trip_id" || head[0] != "route_id" || head[1] != "service_id" {
 		fmt.Println("trips.txt not in expected format:")
-		for i, cell := range records[0] {
+		for i, cell := range head {
 			fmt.Println(i, cell)
 		}
 		panic(1)
 	}
 
+	var n int
 	trips := make(map[string][]Trip)
-	for _, rec := range records[1:] {
+	for {
+		rec, err := r.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
 		route := rec[0]
 		t := Trip{
 			RouteID:   route,
@@ -118,11 +136,12 @@ func getTrips(stopTimes map[string][]StopTime) map[string][]Trip {
 			ServiceID: rec[1],
 		}
 		trips[route] = append(trips[route], t)
+		n++
 	}
 	end := time.Now()
 	elapsed := end.Sub(start)
 
-	fmt.Println("parsed", len(records)-1, "trips in", elapsed)
+	fmt.Println("parsed", n, "trips in", elapsed)
 
 	return trips
 }
