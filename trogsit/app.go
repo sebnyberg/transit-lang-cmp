@@ -13,7 +13,6 @@ import (
 )
 
 type StopTime struct {
-	TripID    string
 	StopID    string
 	Arrival   string
 	Departure string
@@ -39,9 +38,8 @@ type ScheduleResponse struct {
 
 func buildTripResponse(
 	route string,
-	stopTimes []StopTime,
-	stopTimesIxByTrip map[string][]int,
-	trips map[string][]*Trip,
+	stopTimes map[string][]StopTime,
+	trips map[string][]Trip,
 ) []TripResponse {
 	resp := make([]TripResponse, 0, len(trips[route]))
 	for _, trip := range trips[route] {
@@ -51,19 +49,13 @@ func buildTripResponse(
 			RouteID:   route,
 		}
 
-		stopTimeIxs, ok := stopTimesIxByTrip[trip.TripID]
-		if ok {
-			tripResponse.Schedules = make([]ScheduleResponse, 0, len(stopTimeIxs))
-			for stopTimeIx := range stopTimeIxs {
-				stopTime := stopTimes[stopTimeIx]
-				tripResponse.Schedules = append(tripResponse.Schedules, ScheduleResponse{
-					StopID:    stopTime.StopID,
-					Arrival:   stopTime.Arrival,
-					Departure: stopTime.Departure,
-				})
-			}
-		} else {
-			tripResponse.Schedules = []ScheduleResponse{}
+		tripResponse.Schedules = make([]ScheduleResponse, 0, len(stopTimes[trip.TripID]))
+		for _, stopTime := range stopTimes[trip.TripID] {
+			tripResponse.Schedules = append(tripResponse.Schedules, ScheduleResponse{
+				StopID:    stopTime.StopID,
+				Arrival:   stopTime.Arrival,
+				Departure: stopTime.Departure,
+			})
 		}
 		resp = append(resp, tripResponse)
 	}
@@ -71,12 +63,12 @@ func buildTripResponse(
 }
 
 func main() {
-	stopTimes, stopTimesIxByTrip := getStopTimes()
+	stopTimes := getStopTimes()
 	tripsByRoute := getTrips()
 
 	http.HandleFunc("/schedules/", func(w http.ResponseWriter, r *http.Request) {
 		route := strings.Split(r.URL.Path, "/")[2]
-		resp := buildTripResponse(route, stopTimes, stopTimesIxByTrip, tripsByRoute)
+		resp := buildTripResponse(route, stopTimes, tripsByRoute)
 		w.Header().Set("Content-Type", "application/json")
 		json_resp, err := json.Marshal(resp)
 		if err != nil {
@@ -90,7 +82,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":4000", nil))
 }
 
-func getStopTimes() ([]StopTime, map[string][]int) {
+func getStopTimes() map[string][]StopTime {
 	fname := "../MBTA_GTFS/stop_times.txt"
 	f, err := os.OpenFile(fname, os.O_RDONLY, 0644)
 	if err != nil {
@@ -113,27 +105,25 @@ func getStopTimes() ([]StopTime, map[string][]int) {
 		panic(1)
 	}
 
-	stopTimes := make([]StopTime, 0, 1_000_000)
-	stsByTrip := make(map[string][]int)
-	for i, rec := range records[1:] {
+	stopTimes := make(map[string][]StopTime)
+	for _, rec := range records[1:] {
 		trip := rec[0]
-		sts, ok := stsByTrip[trip]
-		if ok {
-			stsByTrip[trip] = append(sts, i)
-		} else {
-			stsByTrip[trip] = []int{i}
+		st := StopTime{
+			StopID:    rec[3],
+			Arrival:   rec[1],
+			Departure: rec[2],
 		}
-		stopTimes = append(stopTimes, StopTime{TripID: trip, StopID: rec[3], Arrival: rec[1], Departure: rec[2]})
+		stopTimes[trip] = append(stopTimes[trip], st)
 	}
 	end := time.Now()
 	elapsed := end.Sub(start)
 
-	fmt.Println("parsed", len(stopTimes), "stop times in", elapsed)
+	fmt.Println("parsed", len(records)-1, "stop times in", elapsed)
 
-	return stopTimes, stsByTrip
+	return stopTimes
 }
 
-func getTrips() map[string][]*Trip {
+func getTrips() map[string][]Trip {
 	fname := "../MBTA_GTFS/trips.txt"
 	f, err := os.OpenFile(fname, os.O_RDONLY, 0644)
 	if err != nil {
@@ -156,10 +146,10 @@ func getTrips() map[string][]*Trip {
 		panic(1)
 	}
 
-	trips := make(map[string][]*Trip)
+	trips := make(map[string][]Trip)
 	for _, rec := range records[1:] {
 		route := rec[0]
-		t := &Trip{
+		t := Trip{
 			TripID:    rec[2],
 			ServiceID: rec[1],
 		}
