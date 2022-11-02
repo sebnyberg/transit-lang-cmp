@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
@@ -31,7 +32,10 @@ func main() {
 
 	http.HandleFunc("/schedules/", func(w http.ResponseWriter, r *http.Request) {
 		route := strings.Split(r.URL.Path, "/")[2]
-		resp := trips[route]
+		h := fnv.New32a()
+		h.Write([]byte(route))
+		k := h.Sum32()
+		resp := trips[k]
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			fmt.Println("json error", err)
@@ -91,7 +95,7 @@ func getStopTimes() map[string][]StopTime {
 	return stopTimes
 }
 
-func getTrips(stopTimes map[string][]StopTime) map[string][]Trip {
+func getTrips(stopTimes map[string][]StopTime) map[uint32][]Trip {
 	fname := "../MBTA_GTFS/trips.txt"
 	f, err := os.OpenFile(fname, os.O_RDONLY, 0644)
 	if err != nil {
@@ -115,8 +119,11 @@ func getTrips(stopTimes map[string][]StopTime) map[string][]Trip {
 	}
 
 	var n int
-	trips := make(map[string][]Trip)
+	h := fnv.New32a()
+	hashes := make(map[uint32]string)
+	trips := make(map[uint32][]Trip)
 	for {
+		h.Reset()
 		rec, err := r.Read()
 		if err != nil {
 			if err == io.EOF {
@@ -125,13 +132,19 @@ func getTrips(stopTimes map[string][]StopTime) map[string][]Trip {
 			panic(err)
 		}
 		route := rec[0]
+		h.Write([]byte(route))
+		k := h.Sum32()
+		if v, exists := hashes[k]; exists && v != route {
+			panic("hash collision")
+		}
+		hashes[k] = route
 		t := Trip{
 			RouteID:   route,
 			Schedules: stopTimes[rec[2]],
 			TripID:    rec[2],
 			ServiceID: rec[1],
 		}
-		trips[route] = append(trips[route], t)
+		trips[k] = append(trips[k], t)
 		n++
 	}
 	end := time.Now()
